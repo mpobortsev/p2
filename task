@@ -1,0 +1,90 @@
+CREATE DATABASE IF NOT EXISTS opt_db1;
+USE opt_db1;
+
+CREATE TABLE IF NOT EXISTS opt_clients (
+    id CHAR(36) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    surname VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(50) NOT NULL,
+    address TEXT NOT NULL,
+    status ENUM('active', 'inactive') NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS opt_products (
+    product_id INT AUTO_INCREMENT PRIMARY KEY,
+    product_name VARCHAR(255) NOT NULL,
+    product_category ENUM('Category1', 'Category2', 'Category3', 'Category4', 'Category5') NOT NULL,
+    description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS opt_orders (
+    order_id INT AUTO_INCREMENT PRIMARY KEY,
+    order_date DATE NOT NULL,
+    client_id CHAR(36),
+    product_id INT,
+    FOREIGN KEY (client_id) REFERENCES opt_clients(id),
+    FOREIGN KEY (product_id) REFERENCES opt_products(product_id)
+);
+
+
+SELECT * FROM opt_clients;
+SELECT * FROM opt_products;
+SELECT * FROM opt_orders;
+	
+  
+  
+-- Bad example
+EXPLAIN ANALYZE
+SELECT opt_clients.email, COUNT(opt_clients.email) AS quonyity, GROUP_CONCAT(opt_products.product_name) AS products
+FROM opt_products
+JOIN opt_orders ON opt_products.product_id = opt_orders.product_id
+JOIN opt_clients ON opt_orders.client_id = opt_clients.id
+WHERE opt_orders.order_date > '2020-01-01'
+GROUP BY opt_clients.email
+HAVING quonyity = (
+	SELECT MIN(quonyity) 
+	FROM (
+	    SELECT COUNT(opt_clients.email) AS quonyity
+	    FROM opt_products
+	    JOIN opt_orders ON opt_products.product_id = opt_orders.product_id
+	    JOIN opt_clients ON opt_orders.client_id = opt_clients.id
+	    WHERE opt_orders.order_date > '2020-01-01'
+	    GROUP BY opt_clients.email) AS min_num)
+OR 
+quonyity = (
+	SELECT MAX(quonyity) 
+	FROM (
+	    SELECT COUNT(opt_clients.email) AS quonyity
+	    FROM opt_products
+	    JOIN opt_orders ON opt_products.product_id = opt_orders.product_id
+	    JOIN opt_clients ON opt_orders.client_id = opt_clients.id
+	    WHERE opt_orders.order_date > '2020-01-01'
+	    GROUP BY opt_clients.email) AS max_num)
+ORDER BY quonyity;
+
+
+
+
+-- Good example
+CREATE INDEX prod_categ_indx ON opt_products(product_category);
+CREATE INDEX email_indx ON opt_clients(email);
+
+EXPLAIN ANALYZE
+WITH product_ord_info AS (
+	SELECT p.product_id, p.product_category, p.product_name, o.order_date, o.client_id
+	FROM opt_products AS p
+	JOIN opt_orders AS o ON p.product_id = o.product_id
+	WHERE o.order_date > '2020-01-01'
+),
+all_info AS (
+	SELECT c.email, COUNT(c.email) AS quonyity, GROUP_CONCAT(cte.product_name) AS products
+	FROM product_ord_info AS cte
+	JOIN opt_clients AS c ON cte.client_id = c.id
+	GROUP BY c.email
+	ORDER BY quonyity
+)
+SELECT * 
+FROM all_info 
+WHERE quonyity = (SELECT MIN(quonyity) FROM all_info)
+   OR quonyity = (SELECT MAX(quonyity) FROM all_info);
